@@ -384,9 +384,15 @@ def _plot_cpm_lightcurve(df: pd.DataFrame, figpath: str, min_cpm_reg: Optional[f
         label="CPM Prediction",
         zorder=1,
     )
+    # Only plot detrended flux values within four standard deviations to suppress outliers.
+    dtr_flux_std = float(np.nanstd(df.dtr_flux))
+    if not np.isfinite(dtr_flux_std) or dtr_flux_std == 0:
+        dtr_mask = df.dtr_flux.notna()
+    else:
+        dtr_mask = df.dtr_flux.notna() & (np.abs(df.dtr_flux) <= 4 * dtr_flux_std)
     axs[1].scatter(
-        df.time,
-        df.dtr_flux,
+        df.time[dtr_mask],
+        df.dtr_flux[dtr_mask],
         c="k",
         s=3,
         zorder=2,
