@@ -33,3 +33,4 @@ scripts/LOGS/
 drivers/test_results/
 notebooks
 drivers/*results
+scripts/targetlists/
