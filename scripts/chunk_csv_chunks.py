@@ -11,6 +11,7 @@ import csv
 from math import ceil
 from pathlib import Path
 
+from wrapunpopular.core import _emit
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -68,7 +69,7 @@ def chunk_csv(input_path: Path, n_chunks: int) -> None:
             writer = csv.writer(outfile)
             writer.writerow(header)
             writer.writerows(chunk_rows)
-        print(f"Wrote {len(chunk_rows)} rows to {output_path}")
+        _emit("INFO", f"Wrote {len(chunk_rows)} rows to {output_path}")
 
 
 def main() -> None:

@@ -11,6 +11,7 @@ import traceback
 import pandas as pd
 
 from wrapunpopular import get_unpopular_lightcurve
+from wrapunpopular.core import _emit
 
 def parse_args() -> Path:
     parser = argparse.ArgumentParser(
@@ -49,7 +50,7 @@ def main(csv_path: Path) -> None:
     root = Path(__file__).resolve().parent.parent
 
     for tic_id in tic_ids:
-        print(f"Starting TIC ID {tic_id}")
+        _emit("INFO", f"Starting TIC ID {tic_id}")
         results_dir = root / "results" / f"TIC_{tic_id}"
         results_dir.mkdir(parents=True, exist_ok=True)
 
@@ -67,10 +68,10 @@ def main(csv_path: Path) -> None:
                 f"Traceback:\n{traceback.format_exc()}"
             )
             error_path.write_text(error_message, encoding="utf-8")
-            print(f"Failed TIC ID {tic_id}; see {error_path.name} for details.")
+            _emit("WRN", f"Failed TIC ID {tic_id}; see {error_path.name} for details.")
             continue
 
-        print(f"Completed TIC ID {tic_id} 🎉")
+        _emit("INFO", f"Completed TIC ID {tic_id} 🎉")
 
 
 if __name__ == "__main__":

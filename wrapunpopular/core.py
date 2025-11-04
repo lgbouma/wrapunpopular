@@ -13,12 +13,20 @@ get_unpopular_lightcurve: Orchestrate cutout retrieval and CPM processing.
 import os
 import shutil
 from glob import glob
+from datetime import datetime
 from os.path import join
 from typing import Iterable, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+
+def _emit(level: str, message: str) -> None:
+    """Print a timestamped log line without using the logging module."""
+    timestamp = datetime.now().strftime("%y%m%d-%H:%M:%S")
+    print(f"{timestamp} {level} {message}")
+
 
 try:
     from astroquery.mast import Tesscut
@@ -217,7 +225,7 @@ def _get_tesscutout_aws(
         pointing_desc = ", ".join(
             f"sector={s_idx},cam={cam_idx},ccd={ccd_idx}" for s_idx, cam_idx, ccd_idx in pointings
         )
-        print(f"INFO TIC {tic_id_clean} AWS pointings: {pointing_desc}")
+        _emit("INFO", f"TIC {tic_id_clean} AWS pointings: {pointing_desc}")
 
     factory = CutoutFactory()
     cutout_paths = []
@@ -230,13 +238,14 @@ def _get_tesscutout_aws(
 
         if os.path.exists(local_path) and not force_download:
             if verbose:
-                print(f"INFO Using cached AWS cutout for TIC {tic_id_clean} at {local_path}")
+                _emit("INFO", f"Using cached AWS cutout for TIC {tic_id_clean} at {local_path}")
             cutout_paths.append(local_path)
             continue
 
         if verbose:
-            print(
-                f"INFO Requesting AWS cutout for TIC {tic_id_clean} from {s3_path} with size={size}"
+            _emit(
+                "INFO",
+                f"Requesting AWS cutout for TIC {tic_id_clean} from {s3_path} with size={size}",
             )
 
         try:
@@ -247,9 +256,12 @@ def _get_tesscutout_aws(
             )
         except Exception as exc:
             if verbose:
-                print(
-                    f"WRN Failed to retrieve AWS cutout for TIC {tic_id_clean} "
-                    f"(sector={s_idx}, cam={cam_idx}, ccd={ccd_idx}): {exc}"
+                _emit(
+                    "WRN",
+                    (
+                        f"Failed to retrieve AWS cutout for TIC {tic_id_clean} "
+                        f"(sector={s_idx}, cam={cam_idx}, ccd={ccd_idx}): {exc}"
+                    ),
                 )
             continue
 
@@ -257,9 +269,12 @@ def _get_tesscutout_aws(
             resolved_path = _resolve_cutout_result(cutout_result, local_path, cache_dir)
         except Exception as exc:
             if verbose:
-                print(
-                    f"WRN Failed to persist AWS cutout for TIC {tic_id_clean} "
-                    f"(sector={s_idx}, cam={cam_idx}, ccd={ccd_idx}): {exc}"
+                _emit(
+                    "WRN",
+                    (
+                        f"Failed to persist AWS cutout for TIC {tic_id_clean} "
+                        f"(sector={s_idx}, cam={cam_idx}, ccd={ccd_idx}): {exc}"
+                    ),
                 )
             continue
 
@@ -335,10 +350,11 @@ def _get_tesscutout(
 
     if matched and not force_download:
         if verbose:
-            print(
-                f"INFO Found cached FITS files in {cache_dir} with matching RA values: {matched}"
+            _emit(
+                "INFO",
+                f"Found cached FITS files in {cache_dir} with matching RA values: {matched}",
             )
-            print("INFO Set force_download=True if you want to re-download the cutouts.")
+            _emit("INFO", "Set force_download=True if you want to re-download the cutouts.")
         return matched
 
     t_paths = Tesscut.download_cutouts(
@@ -438,11 +454,11 @@ def get_unpopular_lightcurve(
     """
 
     if not astroquery_dependency:
-        print("ERR The astroquery package is required for this function to work.")
+        _emit("ERR", "The astroquery package is required for this function to work.")
         return None
 
     if not tess_cpm_dependency:
-        print("ERR The tess_cpm package is required for this function to work.")
+        _emit("ERR", "The tess_cpm package is required for this function to work.")
         return None
 
     if not isinstance(tic_id, str):
@@ -464,7 +480,7 @@ def get_unpopular_lightcurve(
         )
     except Exception as exc:
         if verbose:
-            print(f"INFO Falling back to astroquery Tesscut download for TIC {tic_id}: {exc}")
+            _emit("INFO", f"Falling back to astroquery Tesscut download for TIC {tic_id}: {exc}")
         cutout_paths = _get_tesscutout(size=50, objectname=objectname, cache_dir=ffi_dir)
 
     #
@@ -474,7 +490,7 @@ def get_unpopular_lightcurve(
 
     if csvpaths and not overwrite:
         if verbose:
-            print(f"INFO Using cached CPM light curves for TIC {tic_id} in {lc_dir}")
+            _emit("INFO", f"Using cached CPM light curves for TIC {tic_id} in {lc_dir}")
         return csvpaths
 
     for cutout_path in cutout_paths:
@@ -524,7 +540,7 @@ def get_unpopular_lightcurve(
                 MIN_WORKED = True
             except ValueError as e:
                 if verbose:
-                    print(f"WRN Failed to compute min CPM regularization: {e}")
+                    _emit("WRN", f"Failed to compute min CPM regularization: {e}")
                 MIN_WORKED = False
         else:
             MIN_WORKED = True
@@ -558,7 +574,7 @@ def get_unpopular_lightcurve(
             )
             csvpath = join(lc_dir, f"{starid}_cpm_llc.csv")
             out_df.to_csv(csvpath, index=False)
-            print(f"INFO Wrote {csvpath}")
+            _emit("INFO", f"Wrote {csvpath}")
 
             figpath = join(lc_dir, f"{starid}_cpm_llc.png")
             _plot_cpm_lightcurve(out_df, figpath, min_cpm_reg=min_cpm_reg)
