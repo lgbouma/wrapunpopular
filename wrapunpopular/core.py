@@ -1,5 +1,13 @@
 """
 Core functionality for generating unpopular TESS light curves.
+
+Functions
+---------
+_resolve_cutout_result: Normalize CutoutFactory output to a cached FITS path.
+_get_tesscutout_aws: Fetch and cache cutouts from the TESS AWS S3 archive.
+_get_tesscutout: Download cutouts via astroquery Tesscut as a fallback.
+_plot_cpm_lightcurve: Render diagnostic plots for CPM light curves.
+get_unpopular_lightcurve: Orchestrate cutout retrieval and CPM processing.
 """
 
 import logging
@@ -499,23 +507,22 @@ def get_unpopular_lightcurve(
         # the `i^th` section using all other sections.  Smaller values ->
         # weaker regularization.
         figpath = join(lc_dir, f"{starid}_regs.png")
-        cpm_regs = 10.0 ** np.arange(-10, 10)
-        k = 10
+        k = 100
 
-        MIN_WORKED = False
-        try:
-            min_cpm_reg, _ = s.calc_min_cpm_reg(cpm_regs, k, figpath=figpath)
-            MIN_WORKED = True
-        except ValueError as e:
-            if verbose:
-                logger.warning(f"Failed to compute min CPM regularization: {e}")
+        USE_XVALIDATION = 0
+        if USE_XVALIDATION:
+            cpm_regs = 10.0 ** np.arange(-10, 10)
             MIN_WORKED = False
-
-        # FIXME
-        # import IPython; IPython.embed()
-        MIN_WORKED = True
-        min_cpm_reg = 0.1
-        # FIXME
+            try:
+                min_cpm_reg, _ = s.calc_min_cpm_reg(cpm_regs, k, figpath=figpath)
+                MIN_WORKED = True
+            except ValueError as e:
+                if verbose:
+                    logger.warning(f"Failed to compute min CPM regularization: {e}")
+                MIN_WORKED = False
+        else:
+            MIN_WORKED = True
+            min_cpm_reg = 0.1
 
         if MIN_WORKED:
             s.set_regs([min_cpm_reg])
@@ -524,7 +531,9 @@ def get_unpopular_lightcurve(
             figpath = join(lc_dir, f"{starid}_pixbypix_cpm_subtracted.png")
             s.plot_pix_by_pix(data_type="cpm_subtracted_flux", split=True, figpath=figpath)
 
-            aperture_normalized_flux = s.get_aperture_lc(data_type="normalized_flux")
+            aperture_normalized_flux = s.get_aperture_lc(
+                data_type="normalized_flux"
+            )
             aperture_cpm_prediction = s.get_aperture_lc(
                 data_type="cpm_prediction", weighting="median"
             )
