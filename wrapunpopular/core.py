@@ -61,8 +61,14 @@ try:
 
     tess_cpm_dependency = True
 except ImportError:
-    tess_cpm = None
-    tess_cpm_dependency = False
+    try:
+        import unpopular as tess_cpm
+
+        tess_cpm_dependency = True
+    except ImportError:
+
+        tess_cpm = None
+        tess_cpm_dependency = False
 
 __all__ = ["get_unpopular_lightcurve"]
 
