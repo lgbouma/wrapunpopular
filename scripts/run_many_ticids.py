@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 Batch runner to generate light curves for multiple TIC IDs with wrapunpopular.
-Edit CSVPATH before running so it points at a CSV containing a `ticid` column.
+Provide an absolute path to a CSV containing a `ticid` column when running.
 """
 
+import argparse
 from pathlib import Path
 import traceback
 
@@ -11,18 +12,27 @@ import pandas as pd
 
 from wrapunpopular import get_unpopular_lightcurve
 
-# Update this path locally before running, e.g. Path("/path/to/ticids.csv")
-CSVPATH = Path("REPLACE_WITH_YOUR_CSV_PATH")
+def parse_args() -> Path:
+    parser = argparse.ArgumentParser(
+        description="Generate light curves for TIC IDs listed in a CSV file."
+    )
+    parser.add_argument(
+        "csv_path",
+        help="Absolute path to a CSV file containing a `ticid` column.",
+    )
+    args = parser.parse_args()
+
+    csv_path = Path(args.csv_path).expanduser()
+    if not csv_path.is_absolute():
+        raise ValueError("CSV path must be absolute.")
+    return csv_path
 
 
-def main() -> None:
-    if CSVPATH == Path("REPLACE_WITH_YOUR_CSV_PATH"):
-        raise ValueError("Edit CSVPATH in scripts/run_many_ticids.py before running.")
+def main(csv_path: Path) -> None:
+    if not csv_path.exists():
+        raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
-    if not CSVPATH.exists():
-        raise FileNotFoundError(f"CSV file not found: {CSVPATH}")
-
-    df = pd.read_csv(CSVPATH)
+    df = pd.read_csv(csv_path)
 
     if "ticid" not in df.columns:
         raise KeyError("CSV must contain a `ticid` column.")
@@ -64,4 +74,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(parse_args())
