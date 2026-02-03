@@ -7,7 +7,7 @@ name = "wrapunpopular"
 version = "0.1.0"
 description = "Helpers around unpopular for generating TESS light curves."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [
     { name = "wrapunpopular maintainers" },
@@ -23,4 +23,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/example/wrapunpopular"
+Homepage = "https://github.com/lgbouma/wrapunpopular"
+
+[tool.setuptools.packages.find]
+include = ["wrapunpopular", "wrapunpopular.*"]
