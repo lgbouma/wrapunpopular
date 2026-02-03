@@ -36,7 +36,7 @@ A convenience script is included for TIC 460205581:
 python scripts/run_tic_460205581.py
 ```
 
-Outputs (light curves and plots) will be written to the current working directory unless you pass custom `ffi_dir` and `lc_dir` parameters.
+Outputs (light curves and plots) will be written to the current working directory unless you pass a custom `lc_dir`. FFI cutouts are cached in `~/.unpopular_cache` by default or in a custom `ffi_dir` if provided.
 
 ## Installing `tess_cpm`
 The `tess_cpm` package is distributed inside the upstream [`unpopular`](https://github.com/soichiro-hattori/unpopular) repository and is not published on PyPI. To install it:
