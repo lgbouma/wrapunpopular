@@ -30,11 +30,8 @@ paths = get_unpopular_lightcurve("460205581")
 print(paths)
 ```
 
-A convenience script is included for TIC 460205581:
-
-```bash
-python scripts/run_tic_460205581.py
-```
+An integration test demonstrates the end-to-end call path in `tests/test_integration.py`.
+Enable it by setting `WRAPUNPOPULAR_INTEGRATION=1` when running pytest.
 
 Outputs (light curves and plots) will be written to the current working directory unless you pass a custom `lc_dir`. FFI cutouts are cached in `~/.unpopular_cache` by default or in a custom `ffi_dir` if provided.
 
