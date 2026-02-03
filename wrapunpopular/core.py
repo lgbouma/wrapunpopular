@@ -295,7 +295,15 @@ def _get_tesscutout_aws(
     pointings = sorted(set(pointings))
 
     if not pointings:
-        raise ValueError(f"No valid TESS sectors returned for TIC {tic_id_clean}.")
+        _emit(
+            "WRN",
+            (
+                "No valid TESS sectors returned for "
+                f"TIC {tic_id_clean} with sector_min={sector_min} "
+                f"and sector_max={sector_max}."
+            ),
+        )
+        return []
 
     if verbose:
         pointing_desc = ", ".join(
