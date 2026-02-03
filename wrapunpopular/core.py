@@ -11,6 +11,7 @@ get_unpopular_lightcurve: Orchestrate cutout retrieval and CPM processing.
 """
 
 import os
+import traceback
 import shutil
 from glob import glob
 from datetime import datetime
@@ -345,7 +346,8 @@ def _get_tesscutout_aws(
                     "WRN",
                     (
                         f"Failed to retrieve AWS cutout for TIC {tic_id_clean} "
-                        f"(sector={s_idx}, cam={cam_idx}, ccd={ccd_idx}): {exc}"
+                        f"(sector={s_idx}, cam={cam_idx}, ccd={ccd_idx}): {exc}\n"
+                        f"Traceback:\n{traceback.format_exc()}"
                     ),
                 )
             continue
