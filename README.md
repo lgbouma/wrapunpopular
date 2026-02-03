@@ -8,6 +8,7 @@ Lightweight Python utilities that wrap the `unpopular` pipeline to produce detre
 - Generates diagnostic plots and CSV-ready light curves.
 
 ## Installation
+** This package **
 Install the required dependencies in your environment:
 
 ```bash
@@ -19,6 +20,17 @@ Clone this repository and make sure the project root is on your `PYTHONPATH`, or
 ```bash
 pip install -e .
 ```
+
+** Installing `tess_cpm` **
+The `tess_cpm` package is distributed inside the upstream [`unpopular`](https://github.com/soichiro-hattori/unpopular) repository and is not published on PyPI. To install it:
+
+```bash
+git clone https://github.com/soichiro-hattori/unpopular.git
+cd unpopular
+pip install .
+```
+
+After this step the `wrapunpopular` helpers will be able to import `tess_cpm`.
 
 ## Usage
 Call the main helper from Python:
@@ -35,13 +47,3 @@ Enable it by setting `WRAPUNPOPULAR_INTEGRATION=1` when running pytest.
 
 Outputs (light curves and plots) will be written to the current working directory unless you pass a custom `lc_dir`. FFI cutouts are cached in `~/.unpopular_cache` by default or in a custom `ffi_dir` if provided.
 
-## Installing `tess_cpm`
-The `tess_cpm` package is distributed inside the upstream [`unpopular`](https://github.com/soichiro-hattori/unpopular) repository and is not published on PyPI. To install it:
-
-```bash
-git clone https://github.com/soichiro-hattori/unpopular.git
-cd unpopular
-pip install .
-```
-
-After this step the `wrapunpopular` helpers will be able to import `tess_cpm`.
