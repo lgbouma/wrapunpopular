@@ -121,11 +121,35 @@ def _resolve_cutout_result(result: object, target_path: str, cache_dir: str) -> 
     raise TypeError(f"Unsupported cube_cut return type: {type(result)!r}")
 
 
+def _filter_cutout_paths_by_sector(
+    cutout_paths: Iterable[str],
+    sector_min: int,
+    sector_max: int,
+) -> list[str]:
+    """Filter cutout paths by sector bounds, preserving unknown sector paths."""
+    if sector_min == 0 and sector_max == 9999:
+        return list(cutout_paths)
+
+    filtered_paths = []
+    for path in cutout_paths:
+        try:
+            sector_token = os.path.basename(path).split("_")[0]
+            sector_idx = int(sector_token.split("-")[1])
+        except (IndexError, ValueError):
+            filtered_paths.append(path)
+            continue
+        if sector_min <= sector_idx <= sector_max:
+            filtered_paths.append(path)
+    return filtered_paths
+
+
 def _get_tesscutout_aws(
     tic_id: str,
     cache_dir: str = ".",
     size: int = 50,
     sector: Optional[int] = None,
+    sector_min: int = 0,
+    sector_max: int = 9999,
     force_download: bool = False,
     verbose: bool = True,
 ) -> Iterable[str]:
@@ -142,6 +166,10 @@ def _get_tesscutout_aws(
         Cutout size in pixels passed to astrocut.
     sector : int, optional
         Restrict downloads to a specific sector.
+    sector_min : int
+        Minimum sector to include when downloading cutouts.
+    sector_max : int
+        Maximum sector to include when downloading cutouts.
     force_download : bool
         Redownload even if a cached file is present.
     verbose : bool
@@ -212,6 +240,8 @@ def _get_tesscutout_aws(
         s_idx = int(s_val)
         cam_idx = int(cam_val)
         ccd_idx = int(ccd_val)
+        if s_idx < sector_min or s_idx > sector_max:
+            continue
         if sector is not None and s_idx != sector:
             continue
         pointings.append((s_idx, cam_idx, ccd_idx))
@@ -292,6 +322,8 @@ def _get_tesscutout(
     coordinates: Optional[object] = None,
     size: int = 5,
     sector: Optional[int] = None,
+    sector_min: int = 0,
+    sector_max: int = 9999,
     inflate: bool = True,
     force_download: bool = False,
     verbose: bool = True,
@@ -322,6 +354,10 @@ def _get_tesscutout(
         Optional.
         The TESS sector to return the cutout from.  If not supplied, cutouts
         from all available sectors on which the coordinate appears will be returned.
+    sector_min : int
+        Minimum sector to include when downloading cutouts.
+    sector_max : int
+        Maximum sector to include when downloading cutouts.
     inflate : bool
         Optional, default True.
         Cutout target pixel files are returned from the server in a zip file,
@@ -349,13 +385,18 @@ def _get_tesscutout(
     matched = [m for m in glob(join(cache_dir, "*.fits")) if ra in m]
 
     if matched and not force_download:
-        if verbose:
-            _emit(
-                "INFO",
-                f"Found cached FITS files in {cache_dir} with matching RA values: {matched}",
-            )
-            _emit("INFO", "Set force_download=True if you want to re-download the cutouts.")
-        return matched
+        matched = _filter_cutout_paths_by_sector(matched, sector_min, sector_max)
+        if matched:
+            if verbose:
+                _emit(
+                    "INFO",
+                    f"Found cached FITS files in {cache_dir} with matching RA values: {matched}",
+                )
+                _emit(
+                    "INFO",
+                    "Set force_download=True if you want to re-download the cutouts.",
+                )
+            return matched
 
     t_paths = Tesscut.download_cutouts(
         coordinates=coordinates,
@@ -366,7 +407,7 @@ def _get_tesscutout(
         objectname=objectname,
     )
     cutout_paths = list(t_paths["Local Path"])
-    return cutout_paths
+    return _filter_cutout_paths_by_sector(cutout_paths, sector_min, sector_max)
 
 
 def _plot_cpm_lightcurve(df: pd.DataFrame, figpath: str, min_cpm_reg: Optional[float] = None) -> None:
@@ -427,6 +468,8 @@ def get_unpopular_lightcurve(
     verbose: bool = True,
     overwrite: bool = False,
     lc_dir: Optional[str] = None,
+    sector_min: int = 0,
+    sector_max: int = 9999,
 ) -> Optional[Iterable[str]]:
     """Download and create the default light curves using `unpopular`.
 
@@ -437,7 +480,7 @@ def get_unpopular_lightcurve(
 
     ffi_dir : str
         The directory to which TESS FFI cutout will be written.  If None,
-        defaults to working directory.
+        defaults to ~/.unpopular_cache.
 
     lc_dir : str
         The directory to which light curve and diagnostic plots will be
@@ -446,6 +489,10 @@ def get_unpopular_lightcurve(
     overwrite : bool
         If true, re-creates the CPM light curves.  Otherwise, pulls from cached
         CSV files.
+    sector_min : int
+        Minimum sector to include when downloading cutouts.
+    sector_max : int
+        Maximum sector to include when downloading cutouts.
 
     Returns
     -------
@@ -464,8 +511,11 @@ def get_unpopular_lightcurve(
     if not isinstance(tic_id, str):
         raise TypeError("tic_id must be provided as a string.")
 
+    if sector_min > sector_max:
+        raise ValueError("sector_min must be less than or equal to sector_max.")
+
     if ffi_dir is None:
-        ffi_dir = "./"
+        ffi_dir = os.path.expanduser("~/.unpopular_cache")
 
     if lc_dir is None:
         lc_dir = ffi_dir
@@ -476,12 +526,20 @@ def get_unpopular_lightcurve(
             tic_id=tic_id,
             cache_dir=ffi_dir,
             size=50,
+            sector_min=sector_min,
+            sector_max=sector_max,
             verbose=verbose,
         )
     except Exception as exc:
         if verbose:
             _emit("INFO", f"Falling back to astroquery Tesscut download for TIC {tic_id}: {exc}")
-        cutout_paths = _get_tesscutout(size=50, objectname=objectname, cache_dir=ffi_dir)
+        cutout_paths = _get_tesscutout(
+            size=50,
+            objectname=objectname,
+            cache_dir=ffi_dir,
+            sector_min=sector_min,
+            sector_max=sector_max,
+        )
 
     #
     # Create a default light curve from each sector of data available.
