@@ -129,8 +129,7 @@ def _filter_cutout_paths_by_sector(
     sector_max: int,
 ) -> list[str]:
     """Filter cutout paths by sector bounds, preserving unknown sector paths."""
-    if sector_min == 0 and sector_max == 9999:
-        return list(cutout_paths)
+    sector_min, sector_max = _normalize_sector_bounds(sector_min, sector_max)
 
     filtered_paths = []
     for path in cutout_paths:
@@ -140,13 +139,29 @@ def _filter_cutout_paths_by_sector(
         except (IndexError, ValueError):
             filtered_paths.append(path)
             continue
-        if sector_max is None:
-            if sector_idx >= sector_min or sector_idx == 1751:
-                filtered_paths.append(path)
-            continue
-        if (sector_min <= sector_idx <= sector_max) or sector_idx == 1751:
+        if _sector_in_bounds(sector_idx, sector_min, sector_max):
             filtered_paths.append(path)
     return filtered_paths
+
+
+def _normalize_sector_bounds(
+    sector_min: int,
+    sector_max: int,
+) -> tuple[int, int | None]:
+    """Return sector bounds consistent with AWS logic."""
+    current_sector = _current_sector_number()
+    if sector_max == 9999 and current_sector is not None:
+        sector_max = current_sector
+    return sector_min, sector_max
+
+
+def _sector_in_bounds(sector_idx: int, sector_min: int, sector_max: int | None) -> bool:
+    """Return True if sector is within bounds or matches the special-case sector."""
+    if sector_idx == 1751:
+        return True
+    if sector_max is None:
+        return sector_idx >= sector_min
+    return sector_min <= sector_idx <= sector_max
 
 
 def _current_sector_number() -> int | None:
@@ -262,9 +277,7 @@ def _get_tesscutout_aws(
     camera_arr = np.atleast_1d(camera_arr)
     ccd_arr = np.atleast_1d(ccd_arr)
 
-    current_sector = _current_sector_number()
-    if sector_max == 9999:
-        sector_max = current_sector
+    sector_min, sector_max = _normalize_sector_bounds(sector_min, sector_max)
 
     pointings = []
     for s_val, cam_val, ccd_val in zip(sector_arr, camera_arr, ccd_arr):
@@ -273,7 +286,7 @@ def _get_tesscutout_aws(
         s_idx = int(s_val)
         cam_idx = int(cam_val)
         ccd_idx = int(ccd_val)
-        if (s_idx < sector_min or s_idx > sector_max) and (int(s_idx) != 1751):
+        if not _sector_in_bounds(s_idx, sector_min, sector_max):
             continue
         if sector is not None and s_idx != sector:
             continue
@@ -410,9 +423,15 @@ def _get_tesscutout(
             "but could not be imported."
         )
 
+    if not tess_point_dependency:
+        raise ImportError(
+            "tess_stars2px is required to compute TESScut sector pointings."
+        )
+
     from astroquery.mast.utils import parse_input_location
 
     target_crd = None
+    tic_id_clean = None
     if objectname is not None:
         tic_id_clean = objectname.strip()
         if tic_id_clean.upper().startswith("TIC"):
@@ -434,13 +453,13 @@ def _get_tesscutout(
             ra = float(catalog_result[0]["ra"])
             dec = float(catalog_result[0]["dec"])
             target_crd = SkyCoord(ra=ra, dec=dec, unit="deg")
+        else:
+            tic_id_clean = None
 
     if target_crd is None:
         target_crd = parse_input_location(coordinates, objectname)
 
-    current_sector = _current_sector_number()
-    if sector_max == 9999:
-        sector_max = current_sector
+    sector_min, sector_max = _normalize_sector_bounds(sector_min, sector_max)
 
     ra = f"{target_crd.ra.value:.6f}"
 
@@ -460,15 +479,61 @@ def _get_tesscutout(
                 )
             return matched
 
-    t_paths = Tesscut.download_cutouts(
-        coordinates=target_crd,
-        size=size,
-        sector=sector,
-        path=cache_dir,
-        inflate=inflate,
-        objectname=None if target_crd is not None else objectname,
+    if tic_id_clean is None:
+        raise ValueError("TESScut sector selection requires a TIC objectname.")
+
+    (
+        _,
+        _,
+        _,
+        sector_arr,
+        camera_arr,
+        ccd_arr,
+        *_,
+    ) = tess_stars2px_function_entry(
+        int(tic_id_clean), target_crd.ra.deg, target_crd.dec.deg
     )
-    cutout_paths = list(t_paths["Local Path"])
+
+    sector_arr = np.atleast_1d(sector_arr)
+    camera_arr = np.atleast_1d(camera_arr)
+    ccd_arr = np.atleast_1d(ccd_arr)
+
+    pointings = []
+    for s_val, cam_val, ccd_val in zip(sector_arr, camera_arr, ccd_arr):
+        if not np.isfinite(s_val) or not np.isfinite(cam_val) or not np.isfinite(ccd_val):
+            continue
+        s_idx = int(s_val)
+        cam_idx = int(cam_val)
+        ccd_idx = int(ccd_val)
+        if not _sector_in_bounds(s_idx, sector_min, sector_max):
+            continue
+        if sector is not None and s_idx != sector:
+            continue
+        pointings.append((s_idx, cam_idx, ccd_idx))
+
+    pointings = sorted(set(pointings))
+
+    if not pointings:
+        raise ValueError(f"No valid TESS sectors returned for TIC {tic_id_clean}.")
+
+    if verbose:
+        pointing_desc = ", ".join(
+            f"sector={s_idx},cam={cam_idx},ccd={ccd_idx}" for s_idx, cam_idx, ccd_idx in pointings
+        )
+        _emit("INFO", f"TIC {tic_id_clean} TESScut pointings: {pointing_desc}")
+
+    cutout_paths: list[str] = []
+    for s_idx, _, _ in pointings:
+        t_paths = Tesscut.download_cutouts(
+            coordinates=target_crd,
+            size=size,
+            sector=s_idx,
+            path=cache_dir,
+            inflate=inflate,
+            objectname=None if target_crd is not None else objectname,
+        )
+        cutout_paths.extend(list(t_paths["Local Path"]))
+
     return _filter_cutout_paths_by_sector(cutout_paths, sector_min, sector_max)
 
 
