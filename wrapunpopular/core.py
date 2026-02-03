@@ -21,6 +21,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from astropy.time import Time
+
 
 def _emit(level: str, message: str) -> None:
     """Print a timestamped log line without using the logging module."""
@@ -138,9 +140,36 @@ def _filter_cutout_paths_by_sector(
         except (IndexError, ValueError):
             filtered_paths.append(path)
             continue
-        if sector_min <= sector_idx <= sector_max:
+        if sector_max is None:
+            if sector_idx >= sector_min or sector_idx == 1751:
+                filtered_paths.append(path)
+            continue
+        if (sector_min <= sector_idx <= sector_max) or sector_idx == 1751:
             filtered_paths.append(path)
     return filtered_paths
+
+
+def _current_sector_number() -> int | None:
+    """Return the current TESS sector number based on midtimes.
+
+    Returns:
+        The latest sector whose midpoint is not in the future, or None if
+        unavailable.
+    """
+    try:
+        from tess_stars2px import TESS_Spacecraft_Pointing_Data as tspd
+    except ImportError:
+        return None
+
+    sectors = np.array(tspd.sectors, dtype=int)
+    times = Time(tspd.midtimes, format="jd")
+    now = Time.now()
+
+    in_past = times <= now
+    if not np.any(in_past):
+        return None
+
+    return int(np.max(sectors[in_past]))
 
 
 def _get_tesscutout_aws(
@@ -233,6 +262,10 @@ def _get_tesscutout_aws(
     camera_arr = np.atleast_1d(camera_arr)
     ccd_arr = np.atleast_1d(ccd_arr)
 
+    current_sector = _current_sector_number()
+    if sector_max == 9999:
+        sector_max = current_sector
+
     pointings = []
     for s_val, cam_val, ccd_val in zip(sector_arr, camera_arr, ccd_arr):
         if not np.isfinite(s_val) or not np.isfinite(cam_val) or not np.isfinite(ccd_val):
@@ -240,7 +273,7 @@ def _get_tesscutout_aws(
         s_idx = int(s_val)
         cam_idx = int(cam_val)
         ccd_idx = int(ccd_val)
-        if s_idx < sector_min or s_idx > sector_max:
+        if (s_idx < sector_min or s_idx > sector_max) and (int(s_idx) != 1751):
             continue
         if sector is not None and s_idx != sector:
             continue
@@ -275,7 +308,8 @@ def _get_tesscutout_aws(
         if verbose:
             _emit(
                 "INFO",
-                f"Requesting AWS cutout for TIC {tic_id_clean} from {s3_path} with size={size}",
+                f"Requesting AWS cutout for TIC {tic_id_clean} from {s3_path}"
+                f"with target {target_crd} size={size}",
             )
 
         try:
@@ -378,9 +412,37 @@ def _get_tesscutout(
 
     from astroquery.mast.utils import parse_input_location
 
-    coords = parse_input_location(coordinates, objectname)
+    target_crd = None
+    if objectname is not None:
+        tic_id_clean = objectname.strip()
+        if tic_id_clean.upper().startswith("TIC"):
+            tic_id_clean = tic_id_clean[3:].strip()
+        tic_id_clean = tic_id_clean.replace(" ", "")
+        if tic_id_clean.isdigit():
+            if not astropy_dependency:
+                raise ImportError(
+                    "astropy is required to resolve TIC coordinates for TESScut."
+                )
+            from astroquery.mast import Catalogs
 
-    ra = f"{coords.ra.value:.6f}"
+            catalog_result = Catalogs.query_object(
+                f"TIC {tic_id_clean}", catalog="TIC"
+            )
+            if len(catalog_result) == 0:
+                raise ValueError(f"No TIC catalog entry found for '{objectname}'.")
+
+            ra = float(catalog_result[0]["ra"])
+            dec = float(catalog_result[0]["dec"])
+            target_crd = SkyCoord(ra=ra, dec=dec, unit="deg")
+
+    if target_crd is None:
+        target_crd = parse_input_location(coordinates, objectname)
+
+    current_sector = _current_sector_number()
+    if sector_max == 9999:
+        sector_max = current_sector
+
+    ra = f"{target_crd.ra.value:.6f}"
 
     matched = [m for m in glob(join(cache_dir, "*.fits")) if ra in m]
 
@@ -399,12 +461,12 @@ def _get_tesscutout(
             return matched
 
     t_paths = Tesscut.download_cutouts(
-        coordinates=coordinates,
+        coordinates=target_crd,
         size=size,
         sector=sector,
         path=cache_dir,
         inflate=inflate,
-        objectname=objectname,
+        objectname=None if target_crd is not None else objectname,
     )
     cutout_paths = list(t_paths["Local Path"])
     return _filter_cutout_paths_by_sector(cutout_paths, sector_min, sector_max)
