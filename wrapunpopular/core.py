@@ -627,7 +627,7 @@ def get_unpopular_lightcurve(
                     "time": s.time,
                     "norm_flux": aperture_normalized_flux,
                     "cpm_pred": aperture_cpm_prediction,
-                    "dtr_flux": detrended_flux,
+                    "dtr_flux": 1 + detrended_flux,
                 }
             )
             csvpath = join(lc_dir, f"{starid}_cpm_llc.csv")
